@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres
+    environment:
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
+
+  patent_fetcher:
+    build: .
+    env_file:
+      - ./.env
+    depends_on:
+      - db
+    profiles:
+      - donotstart
