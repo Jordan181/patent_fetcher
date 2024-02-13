@@ -1,5 +1,6 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, is_dataclass, asdict
 from datetime import date
+from json import JSONEncoder
 
 
 @dataclass
@@ -10,3 +11,11 @@ class Patent:
     filing_date: date
     grant_date: date
     invention_title: str
+
+class DataclassJSONEncoder(JSONEncoder):
+    def default(self, o):
+        if is_dataclass(o):
+            return asdict(o)
+        if isinstance(o, date):
+            return o.isoformat()
+        return super().default(o)

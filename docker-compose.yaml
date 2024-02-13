@@ -10,7 +10,15 @@ services:
     build: .
     env_file:
       - ./.env
+    volumes:
+      - .:/app
     depends_on:
       - db
     profiles:
       - donotstart
+    restart: on-failure:3
+
+  tests:
+    extends:
+      service: patent_fetcher
+    entrypoint: python -m unittest
