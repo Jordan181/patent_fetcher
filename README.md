@@ -1,6 +1,8 @@
 # Patent Fetcher
 
-Tool for fetching patents from the USPTO API between a specified start and end date.
+Tool for fetching patents from the USPTO API between a specified start and end date and saving results to a store.
+
+The `Fetcher` class uses dependency injection to get an implementation of `PatentStoreBase`, allowing different stores to be swapped in/out without affecting the patent fetching logic. This was particularly useful for testing and debugging where I could use `MemoryPatentStore` to ensure the data download logic was correct without depending on a database. It is also feasible that a store implementation could be used to push the data to a separate web API or to some message dispatcher, illustrating the flexibility of the design.
 
 ## Running
 
@@ -22,9 +24,3 @@ Run tests with:
     `docker-compose run --rm tests`
 
 (Note: DB server must be running)
-
-## Design Decisions
-
-The `Fetcher` class uses dependency injection to get an implementation of `PatentStoreBase`, allowing different stores to be swapped in/out without affecting the patent fetching logic. This was particularly useful for testing and debugging where I could use `MemoryPatentStore` to ensure the data download logic was correct. It is also feasible that a store implementation could be used to push the data to a separate web API or to some message dispatcher, illustrating the flexibility of the design.
-
-The fetch process is designed to minimize database transactions by first downloading all patents before being passed to the store. It does however have the disadvantage that in the event of an error the full download must be restarted. This could at least be partly mitigated by implementing retry logic, or saving all downloaded patents before exiting. The final design is in the interest of time and minimizing complexity. Given a real project, I would use profiling tools to measure the impact of various approaches and implement a more robust solution.

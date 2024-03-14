@@ -49,7 +49,6 @@ if __name__ == "__main__":
         help="Inclusive end date in ISO format.",
     )
     parser.add_argument(
-        "-l",
         "--load",
         action="store_true",
         help="If enabled, load patents from data store instead of fetching from API."

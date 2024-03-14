@@ -1,6 +1,7 @@
 import logging
 import requests
 
+from collections.abc import Iterator
 from datetime import date, datetime
 
 from src.models import Patent
@@ -15,6 +16,7 @@ class Fetcher:
 
     PATENT_URL = "https://developer.uspto.gov/ibd-api/v1/application/grants"
     RESPONSE_DATE_FORMAT = "%m-%d-%Y"
+    BUFFER_SIZE = 1000 # Number of patents
 
     def __init__(
         self,
@@ -35,62 +37,70 @@ class Fetcher:
         if end < start:
             raise ValueError("End date must be greater than start date.")
 
-        logging.info(f"Beginning patent download from {start} to {end}...")
+        patent_buffer = []
+        for patent in self._download(start, end):
+            patent_buffer.append(patent)
 
-        patents = self._download(start, end)
+            if len(patent_buffer) >= self.BUFFER_SIZE:
+                self._flush_buffer(patent_buffer)
 
-        logging.info(f"Downloaded {len(patents)} patent records.")
-        logging.info("Inserting records...")
-
-        self._store.save(patents)
-
+        self._flush_buffer(patent_buffer)
         logging.info("Complete.")
 
     def from_store(self, start: date, end: date) -> list[Patent]:
         return self._store.load(start, end)
 
-    def _download(self, start: date, end: date) -> list[Patent]:
-        patents = []
+    def _download(self, start: date, end: date) -> Iterator[Patent]:
         rowStart = self._rowStart
         recordTotalQuantity = None
 
-        while (
-            recordTotalQuantity is None or
-            rowStart < recordTotalQuantity
-        ):
-            response = requests.get(
-                url=self.PATENT_URL,
-                params={
-                    "grantFromDate": start.isoformat(),
-                    "grantToDate": end.isoformat(),
-                    "start": rowStart,
-                    "rows": self._rowCount,
-                },
-                verify=self._certFilePath,
-            )
+        logging.info(f"Beginning patent download from {start} to {end}...")
 
-            if not response.ok:
-                raise requests.RequestException(response=response)
-            
-            json = response.json()
-            results = json["results"]
+        with requests.session() as session:
+            while (
+                recordTotalQuantity is None or
+                rowStart < recordTotalQuantity
+            ):
+                response = session.get(
+                    url=self.PATENT_URL,
+                    params={
+                        "grantFromDate": start.isoformat(),
+                        "grantToDate": end.isoformat(),
+                        "start": rowStart,
+                        "rows": self._rowCount,
+                    },
+                    verify=self._certFilePath,
+                )
 
-            for data in results:
-                patents.append(Patent(
-                    patent_number=data["patentNumber"],
-                    patent_application_number=data["patentApplicationNumber"],
-                    assignee_entity_name=data["assigneeEntityName"],
-                    filing_date=self._parse_date(data["filingDate"]),
-                    grant_date=self._parse_date(data["grantDate"]),
-                    invention_title=data["inventionTitle"],
-                ))
+                if not response.ok:
+                    raise requests.RequestException(response=response)
+                
+                json = response.json()
+                results = json["results"]
+                recordTotalQuantity = json["recordTotalQuantity"]
+                count = 0
 
-            recordTotalQuantity = json["recordTotalQuantity"]
-            rowStart += self._rowCount
+                for data in results:
+                    yield Patent(
+                        patent_number=data["patentNumber"],
+                        patent_application_number=data["patentApplicationNumber"],
+                        assignee_entity_name=data["assigneeEntityName"],
+                        filing_date=self._parse_date(data["filingDate"]),
+                        grant_date=self._parse_date(data["grantDate"]),
+                        invention_title=data["inventionTitle"],
+                    )
 
-            logging.info(f"Downloaded {len(patents)}/{recordTotalQuantity} records")
+                    count += 1
+                    logging.info(f"Downloaded patent {count}/{recordTotalQuantity}.")
+
+                rowStart += self._rowCount
         
-        return patents
+        logging.info("Download complete.")
+
+    def _flush_buffer(self, patent_buffer: list[Patent]) -> None:
+        logging.info("Writing patent data...")
+        self._store.save(patent_buffer)
+        patent_buffer.clear()
         
     @classmethod
     def _parse_date(cls, date_string: str) -> date:
